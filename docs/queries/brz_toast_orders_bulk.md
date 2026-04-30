@@ -24,7 +24,7 @@ Target Object: brz_toast_orders_bulk
 ```
 let
     clientId = "MPM8Uoze9yLWAF5PG2HDWcrhwXTuZ7uK",
-    clientSecret = "rrhKfZIdCbmaxRO7RfAc1xHHeZbNVCZIfmPxsrmI6z2V-g9wL8MTfyd2XzOtwR3K",
+    clientSecret = "<SECURE_STORE>",
     restaurantGuid = "4d5e20cd-c9f9-4280-a722-4bee7853e1b5",
     apiHost = "https://ws-api.toasttab.com",
 
@@ -32,8 +32,11 @@ let
     sourceEndpoint = "/orders/v2/ordersBulk",
     recordSource = "ordersBulk",
 
-    // For validation against Toast Sales Report
-    businessDate = "20260422",
+    today = Date.From(DateTime.LocalNow()),
+    businessDatesToFetch = List.Transform(
+        {0, 1, 2},
+        each Date.ToText(Date.AddDays(today, -_), "yyyyMMdd")
+    ),
 
     pageSize = 100,
     maxPages = 50,
@@ -60,7 +63,7 @@ let
     accessToken = authResponse[token][accessToken],
     tokenType = authResponse[token][tokenType],
 
-    GetPage = (pageNumber as number) as list =>
+    GetPageForDate = (bizDate as text, pageNumber as number) as list =>
         let
             response =
                 Json.Document(
@@ -69,7 +72,7 @@ let
                         [
                             RelativePath = "orders/v2/ordersBulk",
                             Query = [
-                                businessDate = businessDate,
+                                businessDate = bizDate,
                                 pageSize = Text.From(pageSize),
                                 page = Text.From(pageNumber)
                             ],
@@ -89,15 +92,19 @@ let
         in
             rows,
 
-    Pages =
-        List.Generate(
-            () => [Page = 1, Rows = GetPage(1)],
-            each List.Count([Rows]) > 0 and [Page] <= maxPages,
-            each [Page = [Page] + 1, Rows = GetPage([Page] + 1)],
-            each [Rows]
+    GetAllPagesForDate = (bizDate as text) as list =>
+        List.Combine(
+            List.Generate(
+                () => [Page = 1, Rows = GetPageForDate(bizDate, 1)],
+                each List.Count([Rows]) > 0 and [Page] <= maxPages,
+                each [Page = [Page] + 1, Rows = GetPageForDate(bizDate, [Page] + 1)],
+                each [Rows]
+            )
         ),
 
-    AllRows = List.Combine(Pages),
+    AllRows = List.Combine(
+        List.Transform(businessDatesToFetch, each GetAllPagesForDate(_))
+    ),
 
     rawTable =
         if List.Count(AllRows) = 0 then
@@ -187,7 +194,7 @@ let
         Table.AddColumn(
             withRecordSource,
             "extract_window_start_utc",
-            each businessDate,
+            each List.Min(businessDatesToFetch),
             type nullable text
         ),
 
@@ -195,7 +202,7 @@ let
         Table.AddColumn(
             withWindowStart,
             "extract_window_end_utc",
-            each businessDate,
+            each List.Max(businessDatesToFetch),
             type nullable text
         ),
 
