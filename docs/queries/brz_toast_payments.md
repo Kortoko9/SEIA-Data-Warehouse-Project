@@ -33,7 +33,13 @@ let
     recordSource = "payments_api_detail",
     ingestedAtUtc = DateTimeZone.ToText(DateTimeZone.UtcNow(), "yyyy-MM-ddTHH:mm:ss.fffZ"),
 
-    paymentBusinessDate = "20260422",
+    // Rolling 3-day window: today + prior 2 business dates.
+    // Catches payments that land on adjacent dates due to restaurant closeout timing.
+    today = Date.From(DateTime.LocalNow()),
+    businessDatesToFetch = List.Transform(
+        {0, 1, 2},
+        each Date.ToText(Date.AddDays(today, -_), "yyyyMMdd")
+    ),
 
     requestDelaySeconds = 0.15,
 
@@ -56,28 +62,34 @@ let
     accessToken = authResponse[token][accessToken],
     tokenType = authResponse[token][tokenType],
 
-    guidListResponse =
-        Json.Document(
-            Web.Contents(
-                apiHost,
-                [
-                    RelativePath = "orders/v2/payments",
-                    Query = [
-                        paidBusinessDate = paymentBusinessDate
-                    ],
-                    Headers = [
-                        Authorization = tokenType & " " & accessToken,
-                        #"Toast-Restaurant-External-ID" = restaurantGuid
-                    ]
-                ]
+    GetGuidsForDate = (bizDate as text) as list =>
+        let
+            response =
+                Json.Document(
+                    Web.Contents(
+                        apiHost,
+                        [
+                            RelativePath = "orders/v2/payments",
+                            Query = [paidBusinessDate = bizDate],
+                            Headers = [
+                                Authorization = tokenType & " " & accessToken,
+                                #"Toast-Restaurant-External-ID" = restaurantGuid
+                            ]
+                        ]
+                    )
+                )
+        in
+            if Type.Is(Value.Type(response), type list) then
+                List.Transform(response, each Text.From(_))
+            else
+                {},
+
+    allGuids =
+        List.Distinct(
+            List.Combine(
+                List.Transform(businessDatesToFetch, each GetGuidsForDate(_))
             )
         ),
-
-    paymentGuids =
-        if Type.Is(Value.Type(guidListResponse), type list) then
-            List.Transform(guidListResponse, each Text.From(_))
-        else
-            {},
 
     GetPaymentDetail = (paymentGuid as text) as record =>
         Function.InvokeAfter(
@@ -98,10 +110,10 @@ let
         ),
 
     paymentDetailRecords =
-        if List.Count(paymentGuids) = 0 then
+        if List.Count(allGuids) = 0 then
             {}
         else
-            List.Transform(paymentGuids, each GetPaymentDetail(_)),
+            List.Transform(allGuids, each GetPaymentDetail(_)),
 
     rawTable =
         if List.Count(paymentDetailRecords) = 0 then
@@ -192,7 +204,7 @@ let
         Table.AddColumn(
             withRecordSource,
             "extract_window_start_utc",
-            each paymentBusinessDate,
+            each List.Min(businessDatesToFetch),
             type nullable text
         ),
 
@@ -200,7 +212,7 @@ let
         Table.AddColumn(
             withWindowStart,
             "extract_window_end_utc",
-            each paymentBusinessDate,
+            each List.Max(businessDatesToFetch),
             type nullable text
         ),
 
