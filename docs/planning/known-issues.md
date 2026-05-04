@@ -321,6 +321,94 @@ Prevention:
 
 For validation, compare actual report count and financial totals, not the last check number.
 
+### Hardcoded businessDate in Bronze Transactional Queries
+
+Issue:
+
+Both `brz_toast_payments` and `brz_toast_orders_bulk` had a single hardcoded business date (`"20260422"`) used during initial validation. Neither query fetched more than one day of data.
+
+Impact:
+
+- Bronze tables contained only one date of data.
+- All downstream Silver tables and the reconciliation mart reflected only that one date.
+- Historical data from March 13 onward was missing entirely.
+
+Fix:
+
+- Replaced hardcoded date with a dynamic rolling 3-day window (`today`, `today-1`, `today-2`) for ongoing scheduled runs.
+- For the one-time backfill, replaced with a full date range from `#date(2026, 3, 13)` to today using `List.Numbers`.
+- Both Bronze destinations set to **Append** mode before backfill run.
+
+Prevention:
+
+Bronze transactional queries must always use a dynamic date window. Never hardcode a business date in a scheduled query. Validate that `extract_window_start_utc` spans multiple dates after any Bronze refresh.
+
+---
+
+### Fabric Dataflow Replace Mode Wiped Bronze Data
+
+Issue:
+
+`brz_toast_payments` destination was set to Replace (the Fabric default). After switching from a hardcoded date to the rolling window, a dataflow run replaced the entire Bronze table with only 3 days of data, deleting all previously loaded rows.
+
+Impact:
+
+- `payment_amount` in the reconciliation mart dropped to `0.0` for April 22 after the run.
+- All historical Bronze payment rows were permanently deleted.
+
+Fix:
+
+- Disabled "Use automatic settings" in the Fabric dataflow destination panel.
+- Switched update method to **Append** for all Bronze transactional tables.
+
+Prevention:
+
+All Bronze transactional tables (`brz_toast_payments`, `brz_toast_orders_bulk`) must use **Append** update method. Silver tables (which deduplicate on each run) may use Replace. Never run a Bronze dataflow without confirming the destination mode first.
+
+---
+
+### Voided Payments Inflating Reconciliation Tender Total
+
+Issue:
+
+`NB_BUILD_RECON_MART` was including voided payments in the `payment_amount` and `deposit_redeem_amount` totals. Voided payments have a non-null `void_business_date` in `stg_toast_payment`.
+
+Impact:
+
+- Tender-side total was overstated.
+- `sales_vs_tender_variance` was incorrect.
+- For April 22: two voided Deposit Redeem payments worth ~$18,404.90 were being included.
+
+Fix:
+
+Added `.where(F.col("p.void_business_date").isNull())` to the `payment_enriched` DataFrame after the payment bucket classification, before the daily aggregation.
+
+Prevention:
+
+Any payment-side aggregation must filter `void_business_date IS NULL`. Voided payments should be retained in Bronze and Silver for auditability but excluded from all financial totals.
+
+---
+
+### Referenced Non-Existent Table stg_toast_payment_refund_void
+
+Issue:
+
+During reconciliation debugging, a query was written referencing `stg_toast_payment_refund_void`. This table does not exist and was never built.
+
+Impact:
+
+Query failed with table-not-found error.
+
+Fix:
+
+Used `void_business_date IS NULL` filter directly on `stg_toast_payment` instead.
+
+Prevention:
+
+Only reference table names confirmed in `query-notebook-inventory.csv`. Do not assume a table exists because it was mentioned in a spec or conversation.
+
+---
+
 ## Future Additions
 
 Add new issues here when encountered:
