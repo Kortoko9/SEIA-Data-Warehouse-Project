@@ -382,6 +382,7 @@ try:
             .when(F.col("p.other_payment_reference").isin(DEPOSIT_REDEEM_ALT_PAYMENT_GUIDS), F.lit("DEPOSIT_REDEEM"))
             .otherwise(F.lit("UNCLASSIFIED_OTHER"))
         )
+        .where(F.col("p.void_business_date").isNull())
     )
 
     payment_daily = (
