@@ -596,7 +596,7 @@ except Exception as e:
     except Exception as logging_error:
         print(f"⚠️ Failed to log pipeline error: {logging_error}")
 
-    raise This page should no longer be treated as an empty code stub.
+    raise
 ```
 
 ## Validation Notes
