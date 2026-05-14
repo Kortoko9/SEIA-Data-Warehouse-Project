@@ -492,7 +492,7 @@ try:
         )
         .withColumn(
             "sales_vs_tender_variance",
-            F.col("check_total_amount") - F.col("payment_amount")
+            F.col("check_total_amount") - F.col("payment_amount") - F.col("deposit_redeem_amount")
         )
         .withColumn(
             "sales_vs_tender_variance_pct",
