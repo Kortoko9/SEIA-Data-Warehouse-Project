@@ -1,0 +1,180 @@
+
+<style>#erd1 svg { width: 100%; }</style>
+<div style="padding: 0.5rem 0 0.25rem;">
+  <p style="font-size:12px; color:var(--color-text-secondary); margin:0 0 8px;">Part 1 — Setup: restaurant, locations, staff, tables, menu catalog</p>
+</div>
+<div id="erd1"></div>
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+await document.fonts.ready;
+mermaid.initialize({ startOnLoad: false, theme: 'base', fontFamily: '"Anthropic Sans", sans-serif',
+  themeVariables: { darkMode: dark, fontSize: '13px', fontFamily: '"Anthropic Sans", sans-serif',
+    lineColor: dark ? '#9c9a92' : '#73726c', textColor: dark ? '#c2c0b6' : '#3d3d3a' }
+});
+const { svg } = await mermaid.render('erd1-svg', `erDiagram
+  RESTAURANT {
+    uuid guid PK
+    string name
+    string timezone
+    string external_id
+    timestamp created_at
+  }
+  LOCATION {
+    uuid guid PK
+    uuid restaurant_guid FK
+    string name
+    string address
+    string phone
+    string currency_code
+    bool is_active
+  }
+  EMPLOYEE {
+    uuid guid PK
+    uuid location_guid FK
+    string first_name
+    string last_name
+    string email
+    string pin_hash
+    string external_id
+    bool is_active
+  }
+  JOB {
+    uuid guid PK
+    uuid location_guid FK
+    string title
+    string wage_type
+    decimal default_wage
+  }
+  EMPLOYEE_JOB {
+    uuid employee_guid FK
+    uuid job_guid FK
+    decimal wage_override
+  }
+  SHIFT {
+    uuid guid PK
+    uuid employee_guid FK
+    uuid job_guid FK
+    uuid cash_drawer_guid FK
+    timestamp clock_in
+    timestamp clock_out
+    decimal declared_tips
+    string status
+  }
+  SECTION {
+    uuid guid PK
+    uuid location_guid FK
+    string name
+    int sort_order
+  }
+  DINING_TABLE {
+    uuid guid PK
+    uuid section_guid FK
+    string table_name
+    int seats
+    bool is_active
+  }
+  DEVICE {
+    uuid guid PK
+    uuid location_guid FK
+    string name
+    string device_type
+    string software_version
+  }
+  CASH_DRAWER {
+    uuid guid PK
+    uuid device_guid FK
+    uuid shift_guid FK
+    decimal opening_amount
+    decimal closing_amount
+    timestamp opened_at
+    timestamp closed_at
+  }
+  MENU {
+    uuid guid PK
+    uuid location_guid FK
+    string name
+    bool always_available
+  }
+  MENU_GROUP {
+    uuid guid PK
+    uuid menu_guid FK
+    uuid parent_group_guid FK
+    string name
+    int sort_order
+  }
+  MENU_ITEM {
+    uuid guid PK
+    uuid menu_group_guid FK
+    string name
+    decimal base_price
+    string sku
+    bool is_available
+    string image_url
+  }
+  MODIFIER_GROUP {
+    uuid guid PK
+    uuid menu_item_guid FK
+    string name
+    int min_selections
+    int max_selections
+  }
+  MODIFIER {
+    uuid guid PK
+    uuid modifier_group_guid FK
+    string name
+    decimal price_delta
+    bool is_default
+  }
+  DISCOUNT {
+    uuid guid PK
+    uuid location_guid FK
+    string name
+    string discount_type
+    decimal amount
+    decimal percent
+    bool requires_manager
+  }
+  TAX_RATE {
+    uuid guid PK
+    uuid location_guid FK
+    string name
+    decimal rate_percent
+    bool is_inclusive
+  }
+
+  RESTAURANT ||--o{ LOCATION : "has"
+  LOCATION ||--o{ EMPLOYEE : "employs"
+  LOCATION ||--o{ SECTION : "has"
+  LOCATION ||--o{ DEVICE : "has"
+  LOCATION ||--o{ MENU : "has"
+  LOCATION ||--o{ DISCOUNT : "has"
+  LOCATION ||--o{ TAX_RATE : "has"
+  EMPLOYEE ||--o{ EMPLOYEE_JOB : "holds"
+  JOB ||--o{ EMPLOYEE_JOB : "assigned to"
+  EMPLOYEE ||--o{ SHIFT : "clocks"
+  JOB ||--o{ SHIFT : "role in"
+  DEVICE ||--o{ CASH_DRAWER : "has"
+  SHIFT ||--o{ CASH_DRAWER : "assigned"
+  SECTION ||--o{ DINING_TABLE : "contains"
+  MENU ||--o{ MENU_GROUP : "contains"
+  MENU_GROUP ||--o{ MENU_GROUP : "sub-group"
+  MENU_GROUP ||--o{ MENU_ITEM : "contains"
+  MENU_ITEM ||--o{ MODIFIER_GROUP : "has"
+  MODIFIER_GROUP ||--o{ MODIFIER : "has"
+`);
+document.getElementById('erd1').innerHTML = svg;
+document.querySelectorAll('#erd1 svg .node').forEach(node => {
+  const fp = node.querySelector('path[d]');
+  if (!fp) return;
+  const nums = fp.getAttribute('d').match(/-?[\d.]+/g)?.map(Number);
+  if (!nums || nums.length < 8) return;
+  const xs = [nums[0],nums[2],nums[4],nums[6]], ys = [nums[1],nums[3],nums[5],nums[7]];
+  const x=Math.min(...xs),y=Math.min(...ys),w=Math.max(...xs)-x,h=Math.max(...ys)-y;
+  const r=document.createElementNS('http://www.w3.org/2000/svg','rect');
+  r.setAttribute('x',x);r.setAttribute('y',y);r.setAttribute('width',w);r.setAttribute('height',h);r.setAttribute('rx','8');
+  for(const a of['fill','stroke','stroke-width','class','style'])if(fp.hasAttribute(a))r.setAttribute(a,fp.getAttribute(a));
+  fp.replaceWith(r);
+});
+document.querySelectorAll('#erd1 svg .row-rect-odd path,#erd1 svg .row-rect-even path').forEach(p=>p.setAttribute('stroke','none'));
+</script>
